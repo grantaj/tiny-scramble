@@ -34,6 +34,8 @@
   let t=0, shake=0, nextSpawn=0, nextFuel=0, nextEnemy=0;
   let bullets=[], bombs=[], enemies=[], pickups=[], particles=[];
   let terrain=[], terrainX=0;
+  let bombArmed=true, bombLowY=0;
+  const BOMB_REARM_CLIMB=90;
 
   const ship = {x:110,y:180,vy:0,w:34,h:16};
 
@@ -41,6 +43,7 @@
     gameOver=false; started=false; score=0; fuel=100; speed=210; t=0; shake=0;
     bullets=[]; bombs=[]; enemies=[]; pickups=[]; particles=[];
     ship.y=H*0.45; ship.vy=0;
+    bombArmed=true; bombLowY=ship.y;
     terrain=[]; terrainX=0;
     let x=-40, y=H*0.78;
     while(x<W+240){
@@ -79,7 +82,10 @@
   }
 
   function dropBomb(){
-    // A release is an intentional bombing action: one immediate, predictable bomb.
+    if(!bombArmed) return;
+    bombArmed=false;
+    bombLowY=ship.y;
+    // One immediate, predictable bomb. Another is earned by climbing out.
     bombs.push({x:ship.x+4,y:ship.y+8,vx:42,vy:55});
   }
 
@@ -128,6 +134,15 @@
     ship.y += ship.vy*dt;
     if(ship.y<18){ship.y=18;ship.vy=Math.max(0,ship.vy*.2);}
     if(ship.y>H-20) crash();
+
+    // After a drop, remember the lowest point of the attack. The rack only rearms
+    // after the pilot has pulled out and climbed a meaningful distance from it.
+    if(!bombArmed){
+      bombLowY=Math.max(bombLowY,ship.y);
+      if(hold && ship.vy < -40 && ship.y <= bombLowY-BOMB_REARM_CLIMB){
+        bombArmed=true;
+      }
+    }
 
     // Scroll/generate terrain.
     const dx=speed*dt;
@@ -330,6 +345,10 @@
       ctx.moveTo(20,0); ctx.lineTo(-10,-8); ctx.lineTo(-17,0); ctx.lineTo(-10,8); ctx.closePath(); ctx.fill();
       ctx.fillStyle="#46b7ff";
       ctx.fillRect(-8,-5,8,4);
+      if(bombArmed && !gameOver){
+        ctx.fillStyle="#ffb347";
+        ctx.fillRect(-1,8,7,3);
+      }
       ctx.fillStyle="#ff654a";
       ctx.beginPath();ctx.moveTo(-17,-4);ctx.lineTo(-29,0);ctx.lineTo(-17,4);ctx.fill();
       ctx.restore();
@@ -362,8 +381,9 @@
       ctx.fillText("TINY SCRAMBLE",W/2,H*.28);
       ctx.font="17px monospace";
       ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.28+38);
-      ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.28+65);
-      ctx.fillText("Space / ↑ / touch to start",W/2,H*.28+105);
+      ctx.fillText("Bomb rearms after you climb out",W/2,H*.28+65);
+      ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.28+92);
+      ctx.fillText("Space / ↑ / touch to start",W/2,H*.28+132);
       ctx.textAlign="left";
     }
 
