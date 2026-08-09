@@ -30,17 +30,20 @@
   const rand=(a,b)=>a+Math.random()*(b-a);
 
   let hold=false, gameOver=false, started=false;
+  let startCharging=false, startCharge=0;
   let score=0, best=+(localStorage.tinyScrambleBest||0), fuel=100, speed=210;
   let t=0, shake=0, nextSpawn=0, nextFuel=0, nextEnemy=0;
   let bullets=[], bombs=[], enemies=[], pickups=[], particles=[];
   let terrain=[], terrainX=0;
   let bombCooldown=0, bombHeat=0, climbRecovery=0;
   const BOMB_BASE_COOLDOWN=.18, BOMB_MAX_COOLDOWN=2.9, BOMB_CLIMB_RESET=.55;
+  const START_HOLD=.75;
 
   const ship = {x:110,y:180,vy:0,w:34,h:16};
 
   function reset(){
-    gameOver=false; started=false; score=0; fuel=100; speed=210; t=0; shake=0;
+    gameOver=false; started=false; hold=false; startCharging=false; startCharge=0;
+    score=0; fuel=100; speed=210; t=0; shake=0;
     bullets=[]; bombs=[]; enemies=[]; pickups=[]; particles=[];
     ship.y=H*0.45; ship.vy=0;
     bombCooldown=0; bombHeat=0; climbRecovery=0;
@@ -75,7 +78,7 @@
 
   function crash(){
     if(gameOver) return;
-    gameOver=true;
+    gameOver=true; hold=false; startCharging=false; startCharge=0;
     explode(ship.x,ship.y,32);
     best=Math.max(best,Math.floor(score));
     localStorage.tinyScrambleBest=best;
@@ -88,18 +91,30 @@
     bombHeat=Math.min(5,bombHeat+1);
   }
 
+  function launch(){
+    if(gameOver) reset();
+    started=true; gameOver=false; hold=false; startCharging=false; startCharge=0;
+  }
+
   function press(){
-    if(gameOver){ reset(); return; }
-    hold=true; started=true;
+    if(!started || gameOver){
+      startCharging=true; startCharge=0; hold=false; return;
+    }
+    hold=true;
   }
   function release(){
+    if(!started || gameOver){
+      if(startCharging && startCharge>=1) launch();
+      startCharging=false; startCharge=0; hold=false; climbRecovery=0;
+      return;
+    }
     if(hold && started && !gameOver) dropBomb();
     hold=false;
     climbRecovery=0;
   }
 
   addEventListener("keydown",e=>{
-    if(["Space","ArrowUp","KeyW"].includes(e.code)){ e.preventDefault(); press(); }
+    if(["Space","ArrowUp","KeyW"].includes(e.code)){ e.preventDefault(); if(!e.repeat) press(); }
   });
   addEventListener("keyup",e=>{
     if(["Space","ArrowUp","KeyW"].includes(e.code)){ e.preventDefault(); release(); }
@@ -107,6 +122,10 @@
   canvas.addEventListener("pointerdown",e=>{ e.preventDefault(); press(); });
   addEventListener("pointerup",release);
   addEventListener("pointercancel",release);
+  addEventListener("blur",()=>{
+    if(!started || gameOver){ startCharging=false; startCharge=0; }
+    else { hold=false; climbRecovery=0; }
+  });
 
   function rectHit(ax,ay,aw,ah,bx,by,bw,bh){
     return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;
@@ -117,6 +136,7 @@
       particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;});
       particles=particles.filter(p=>p.life>0);
       shake*=Math.pow(.02,dt);
+      if(startCharging) startCharge=clamp(startCharge+dt/START_HOLD,0,1);
       return;
     }
 
@@ -167,14 +187,10 @@
       nextSpawn=.16;
     }
 
-    // Bombing is handled deterministically on control release.
-
     nextEnemy -= dt;
     if(nextEnemy<=0){
       const x=W+30;
       const kind=Math.random()<.6 ? "turret" : "drone";
-      // Pick the kind first, then place it appropriately. Turrets sit on the ground;
-      // drones occupy the air. (The old version randomized these independently.)
       const y = kind==="turret" ? groundYAt(x)-8 : rand(65,H*.45);
       enemies.push({x,y,w:22,h:16,kind});
       nextEnemy=rand(.8,1.65);
@@ -190,14 +206,11 @@
     bullets=bullets.filter(b=>b.x<W+40);
 
     bombs.forEach(b=>{
-      // Fixed screen-relative forward drift makes every bomb follow the same arc,
-      // independent of the current scroll speed.
       b.vy+=300*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
     });
 
     enemies.forEach(e=>{
       e.x-=dx;
-      // Keep ground emplacements glued to the scrolling terrain.
       if(e.kind==="turret") e.y=groundYAt(e.x)-8;
     });
     pickups.forEach(p=>p.x-=dx);
@@ -278,6 +291,15 @@
     });
     particles=particles.filter(p=>p.life>0);
     shake*=Math.pow(.02,dt);
+  }
+
+  function drawStartBar(y){
+    const bw=Math.min(210,W*.46),bh=10,x=W/2-bw/2;
+    ctx.strokeStyle="#fff";ctx.lineWidth=1;ctx.strokeRect(x,y,bw,bh);
+    ctx.fillStyle=startCharge>=1?"#f2ce4a":"#8eb7d8";
+    ctx.fillRect(x+2,y+2,(bw-4)*startCharge,bh-4);
+    ctx.fillStyle="#fff";ctx.font="13px monospace";ctx.textAlign="center";
+    ctx.fillText(startCharge>=1?"RELEASE":"HOLD TO ARM",W/2,y+29);
   }
 
   function draw(){
@@ -376,23 +398,24 @@
       ctx.textAlign="center";
       ctx.fillStyle="#fff";
       ctx.font="bold 28px monospace";
-      ctx.fillText("TINY SCRAMBLE",W/2,H*.28);
+      ctx.fillText("TINY SCRAMBLE",W/2,H*.27);
       ctx.font="17px monospace";
-      ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.28+38);
-      ctx.fillText("Repeated bombs slow down • climb to reset",W/2,H*.28+65);
-      ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.28+92);
-      ctx.fillText("Space / ↑ / touch to start",W/2,H*.28+132);
+      ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.27+38);
+      ctx.fillText("Repeated bombs slow down • climb to reset",W/2,H*.27+65);
+      ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.27+92);
+      drawStartBar(H*.27+119);
       ctx.textAlign="left";
     }
 
     if(gameOver){
+      ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(0,0,W,H);
       ctx.textAlign="center";
       ctx.fillStyle="#fff";
       ctx.font="bold 28px monospace";
-      ctx.fillText("CRASHED",W/2,H*.32);
+      ctx.fillText("CRASHED",W/2,H*.31);
       ctx.font="17px monospace";
-      ctx.fillText(`Score ${Math.floor(score)}  •  Best ${best}`,W/2,H*.32+36);
-      ctx.fillText("Press / tap to restart",W/2,H*.32+72);
+      ctx.fillText(`Score ${Math.floor(score)}  •  Best ${best}`,W/2,H*.31+36);
+      drawStartBar(H*.31+61);
       ctx.textAlign="left";
     }
 
