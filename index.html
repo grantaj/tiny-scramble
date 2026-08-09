@@ -35,8 +35,8 @@
   let t=0, shake=0, nextSpawn=0, nextFuel=0, nextEnemy=0;
   let bullets=[], bombs=[], enemies=[], pickups=[], particles=[];
   let terrain=[], terrainX=0;
-  let bombCooldown=0, bombHeat=0, climbRecovery=0;
-  const BOMB_BASE_COOLDOWN=.18, BOMB_MAX_COOLDOWN=2.9, BOMB_CLIMB_RESET=.55;
+  let bombCooldown=0, bombHeat=0, bombSinceLast=99, climbRecovery=0;
+  const BOMB_BASE_COOLDOWN=.12, BOMB_MAX_COOLDOWN=1.4, BOMB_BURST_WINDOW=1.0, BOMB_CLIMB_RESET=.35;
   const START_HOLD=.75;
 
   const ship = {x:110,y:180,vy:0,w:34,h:16};
@@ -46,7 +46,7 @@
     score=0; fuel=100; speed=210; t=0; shake=0;
     bullets=[]; bombs=[]; enemies=[]; pickups=[]; particles=[];
     ship.y=H*0.45; ship.vy=0;
-    bombCooldown=0; bombHeat=0; climbRecovery=0;
+    bombCooldown=0; bombHeat=0; bombSinceLast=99; climbRecovery=0;
     terrain=[]; terrainX=0;
     let x=-40, y=H*0.78;
     while(x<W+240){
@@ -86,9 +86,13 @@
 
   function dropBomb(){
     if(bombCooldown>0) return;
+    // An isolated release starts a fresh burst, so ordinary flying does not build
+    // up a long-lived bombing penalty. Only closely spaced bombs add heat.
+    if(bombSinceLast>BOMB_BURST_WINDOW) bombHeat=0;
     bombs.push({x:ship.x+4,y:ship.y+8,vx:42,vy:55});
     bombCooldown=Math.min(BOMB_MAX_COOLDOWN,BOMB_BASE_COOLDOWN*Math.pow(2,bombHeat));
-    bombHeat=Math.min(5,bombHeat+1);
+    bombHeat=Math.min(4,bombHeat+1);
+    bombSinceLast=0;
   }
 
   function launch(){
@@ -155,14 +159,16 @@
     if(ship.y<18){ship.y=18;ship.vy=Math.max(0,ship.vy*.2);}
     if(ship.y>H-20) crash();
 
-    // Bombs begin almost unrestricted, then successful rapid drops become
-    // exponentially slower. A short sustained climb clears the penalty entirely.
+    // This is a burst limiter, not ammunition. Cooldown is short, an ordinary
+    // pause starts the next burst fresh, and a brief sustained climb clears it now.
     bombCooldown=Math.max(0,bombCooldown-dt);
+    bombSinceLast+=dt;
     if(hold){
       climbRecovery+=dt;
       if(climbRecovery>=BOMB_CLIMB_RESET){
         bombHeat=0;
         bombCooldown=0;
+        bombSinceLast=BOMB_BURST_WINDOW+1;
       }
     }
 
@@ -369,6 +375,10 @@
       ctx.moveTo(20,0); ctx.lineTo(-10,-8); ctx.lineTo(-17,0); ctx.lineTo(-10,8); ctx.closePath(); ctx.fill();
       ctx.fillStyle="#46b7ff";
       ctx.fillRect(-8,-5,8,4);
+      if(started && !gameOver && bombCooldown<=0){
+        ctx.fillStyle="#ffb347";
+        ctx.fillRect(-1,8,7,3);
+      }
       ctx.fillStyle="#ff654a";
       ctx.beginPath();ctx.moveTo(-17,-4);ctx.lineTo(-29,0);ctx.lineTo(-17,4);ctx.fill();
       ctx.restore();
@@ -401,7 +411,7 @@
       ctx.fillText("TINY SCRAMBLE",W/2,H*.27);
       ctx.font="17px monospace";
       ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.27+38);
-      ctx.fillText("Repeated bombs slow down • climb to reset",W/2,H*.27+65);
+      ctx.fillText("Rapid bombing slows briefly • climb to clear",W/2,H*.27+65);
       ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.27+92);
       drawStartBar(H*.27+119);
       ctx.textAlign="left";
