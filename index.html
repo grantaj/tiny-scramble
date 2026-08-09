@@ -305,7 +305,7 @@
     ctx.fillStyle=startCharge>=1?"#f2ce4a":"#8eb7d8";
     ctx.fillRect(x+2,y+2,(bw-4)*startCharge,bh-4);
     ctx.fillStyle="#fff";ctx.font="13px monospace";ctx.textAlign="center";
-    ctx.fillText(startCharge>=1?"RELEASE":"HOLD TO ARM",W/2,y+29);
+    ctx.fillText(startCharge>=1?"RELEASE":"HOLD TO START",W/2,y+29);
   }
 
   function draw(){
@@ -411,9 +411,7 @@
       ctx.fillText("TINY SCRAMBLE",W/2,H*.27);
       ctx.font="17px monospace";
       ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.27+38);
-      ctx.fillText("Rapid bombing slows briefly • climb to clear",W/2,H*.27+65);
-      ctx.fillText("Shoot or bomb fuel tanks to refuel",W/2,H*.27+92);
-      drawStartBar(H*.27+119);
+      drawStartBar(H*.27+65);
       ctx.textAlign="left";
     }
 
