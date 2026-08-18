@@ -16,12 +16,12 @@
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
 
-  let W=0,H=0,DPR=1;
+  let W=0,H=0;
   function resize(){
-    DPR = Math.min(2, devicePixelRatio || 1);
+    const dpr = Math.min(2, devicePixelRatio || 1);
     W = innerWidth; H = innerHeight;
-    canvas.width = W*DPR; canvas.height = H*DPR;
-    ctx.setTransform(DPR,0,0,DPR,0,0);
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
   }
   addEventListener("resize",resize);
   resize();
@@ -29,32 +29,30 @@
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const rand=(a,b)=>a+Math.random()*(b-a);
 
-  let hold=false, gameOver=false, started=false;
-  let startCharging=false, startCharge=0;
-  let score=0, best=+(localStorage.tinyScrambleBest||0), fuel=100, speed=210;
-  let t=0, shake=0, nextSpawn=0, nextFuel=0, nextEnemy=0;
-  let bullets=[], bombs=[], enemies=[], pickups=[], particles=[];
-  let terrain=[], terrainX=0;
-  let bombCooldown=0, bombHeat=0, bombSinceLast=99, climbRecovery=0;
-  const BOMB_BASE_COOLDOWN=.12, BOMB_MAX_COOLDOWN=1.4, BOMB_BURST_WINDOW=1.0, BOMB_CLIMB_RESET=.35;
+  let hold, gameOver, started, startCharge;
+  let score, fuel, speed, t, shake, nextShot, nextFuel, nextEnemy;
+  let bullets, bombs, enemies, pickups, particles, terrain;
+  let bombCooldown, bombHeat, bombSinceLast, climbRecovery;
+  let best=+(localStorage.tinyScrambleBest||0);
+  const BOMB_BASE_COOLDOWN=.12, BOMB_MAX_COOLDOWN=1.4, BOMB_BURST_WINDOW=1, BOMB_CLIMB_RESET=.35;
   const START_HOLD=.75;
 
-  const ship = {x:110,y:180,vy:0,w:34,h:16};
+  const ship = {x:110,w:34,h:16};
 
   function reset(){
-    gameOver=false; started=false; hold=false; startCharging=false; startCharge=0;
+    gameOver=false; started=false; hold=false; startCharge=0;
     score=0; fuel=100; speed=210; t=0; shake=0;
     bullets=[]; bombs=[]; enemies=[]; pickups=[]; particles=[];
-    ship.y=H*0.45; ship.vy=0;
+    ship.y=H*.45; ship.vy=0;
     bombCooldown=0; bombHeat=0; bombSinceLast=99; climbRecovery=0;
-    terrain=[]; terrainX=0;
-    let x=-40, y=H*0.78;
+    terrain=[];
+    let x=-40, y=H*.78;
     while(x<W+240){
       terrain.push({x,y});
       x += 70;
-      y = clamp(y + rand(-55,55), H*0.56, H*0.88);
+      y = clamp(y + rand(-55,55), H*.56, H*.88);
     }
-    nextSpawn=.2; nextFuel=4; nextEnemy=2;
+    nextShot=.2; nextFuel=4; nextEnemy=2;
   }
 
   function groundYAt(x){
@@ -76,9 +74,17 @@
     shake=Math.max(shake,6);
   }
 
+  function updateParticles(dt,gravity){
+    particles.forEach(p=>{
+      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=gravity*dt; p.life-=dt;
+    });
+    particles=particles.filter(p=>p.life>0);
+    shake*=Math.pow(.02,dt);
+  }
+
   function crash(){
     if(gameOver) return;
-    gameOver=true; hold=false; startCharging=false; startCharge=0;
+    gameOver=true; hold=false; startCharge=0;
     explode(ship.x,ship.y,32);
     best=Math.max(best,Math.floor(score));
     localStorage.tinyScrambleBest=best;
@@ -89,7 +95,7 @@
     // An isolated release starts a fresh burst, so ordinary flying does not build
     // up a long-lived bombing penalty. Only closely spaced bombs add heat.
     if(bombSinceLast>BOMB_BURST_WINDOW) bombHeat=0;
-    bombs.push({x:ship.x+4,y:ship.y+8,vx:42,vy:55});
+    bombs.push({x:ship.x+4,y:ship.y+8,vy:55});
     bombCooldown=Math.min(BOMB_MAX_COOLDOWN,BOMB_BASE_COOLDOWN*Math.pow(2,bombHeat));
     bombHeat=Math.min(4,bombHeat+1);
     bombSinceLast=0;
@@ -97,22 +103,21 @@
 
   function launch(){
     if(gameOver) reset();
-    started=true; gameOver=false; hold=false; startCharging=false; startCharge=0;
+    started=true;
   }
 
   function press(){
-    if(!started || gameOver){
-      startCharging=true; startCharge=0; hold=false; return;
-    }
+    if(!started || gameOver) startCharge=0;
     hold=true;
   }
+
   function release(){
     if(!started || gameOver){
-      if(startCharging && startCharge>=1) launch();
-      startCharging=false; startCharge=0; hold=false; climbRecovery=0;
-      return;
+      if(hold && startCharge>=1) launch();
+      startCharge=0;
+    }else if(hold){
+      dropBomb();
     }
-    if(hold && started && !gameOver) dropBomb();
     hold=false;
     climbRecovery=0;
   }
@@ -127,8 +132,7 @@
   addEventListener("pointerup",release);
   addEventListener("pointercancel",release);
   addEventListener("blur",()=>{
-    if(!started || gameOver){ startCharging=false; startCharge=0; }
-    else { hold=false; climbRecovery=0; }
+    hold=false; startCharge=0; climbRecovery=0;
   });
 
   function rectHit(ax,ay,aw,ah,bx,by,bw,bh){
@@ -137,16 +141,14 @@
 
   function update(dt){
     if(!started || gameOver){
-      particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;});
-      particles=particles.filter(p=>p.life>0);
-      shake*=Math.pow(.02,dt);
-      if(startCharging) startCharge=clamp(startCharge+dt/START_HOLD,0,1);
+      updateParticles(dt,0);
+      if(hold) startCharge=clamp(startCharge+dt/START_HOLD,0,1);
       return;
     }
 
     t+=dt;
     score += dt*10;
-    speed = 210 + Math.min(180, score*0.055);
+    speed = 210 + Math.min(180, score*.055);
     fuel -= dt*(2.4 + speed/500);
     if(fuel<=0){ fuel=0; crash(); }
 
@@ -187,10 +189,10 @@
     if(ship.y+ship.h*.55 > gy) crash();
 
     // Automatic gun.
-    nextSpawn -= dt;
-    if(nextSpawn<=0){
-      bullets.push({x:ship.x+20,y:ship.y,vx:520});
-      nextSpawn=.16;
+    nextShot -= dt;
+    if(nextShot<=0){
+      bullets.push({x:ship.x+20,y:ship.y});
+      nextShot=.16;
     }
 
     nextEnemy -= dt;
@@ -208,11 +210,11 @@
       nextFuel=rand(4.5,7.5);
     }
 
-    bullets.forEach(b=>b.x+=b.vx*dt);
+    bullets.forEach(b=>b.x+=520*dt);
     bullets=bullets.filter(b=>b.x<W+40);
 
     bombs.forEach(b=>{
-      b.vy+=300*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+      b.vy+=300*dt; b.x+=42*dt; b.y+=b.vy*dt;
     });
 
     enemies.forEach(e=>{
@@ -291,12 +293,7 @@
 
     enemies=enemies.filter(e=>e.x>-60);
     pickups=pickups.filter(p=>p.x>-60);
-
-    particles.forEach(p=>{
-      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=80*dt; p.life-=dt;
-    });
-    particles=particles.filter(p=>p.life>0);
-    shake*=Math.pow(.02,dt);
+    updateParticles(dt,80);
   }
 
   function drawStartBar(y){
