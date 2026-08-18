@@ -401,21 +401,26 @@
     ctx.fillStyle=fuel<25?"#ff5c5c":"#66e27f";
     ctx.fillRect(W-116,18,96*(fuel/100),10);
 
-    if(!started || gameOver){
-      if(gameOver){
-        ctx.fillStyle="rgba(0,0,0,.45)";
-        ctx.fillRect(0,0,W,H);
-      }
-      const y=H*(gameOver ? .31 : .27);
-      const title=gameOver?"CRASHED":"TINY SCRAMBLE";
-      const subtitle=gameOver?`Score ${Math.floor(score)}  •  Best ${best}`:"HOLD to climb • RELEASE to dive + bomb";
+    if(!started && !gameOver){
       ctx.textAlign="center";
       ctx.fillStyle="#fff";
       ctx.font="bold 28px monospace";
-      ctx.fillText(title,W/2,y);
+      ctx.fillText("TINY SCRAMBLE",W/2,H*.27);
       ctx.font="17px monospace";
-      ctx.fillText(subtitle,W/2,y+(gameOver?36:38));
-      drawStartBar(y+(gameOver?61:65));
+      ctx.fillText("HOLD to climb • RELEASE to dive + bomb",W/2,H*.27+38);
+      drawStartBar(H*.27+65);
+      ctx.textAlign="left";
+    }
+
+    if(gameOver){
+      ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(0,0,W,H);
+      ctx.textAlign="center";
+      ctx.fillStyle="#fff";
+      ctx.font="bold 28px monospace";
+      ctx.fillText("CRASHED",W/2,H*.31);
+      ctx.font="17px monospace";
+      ctx.fillText(`Score ${Math.floor(score)}  •  Best ${best}`,W/2,H*.31+36);
+      drawStartBar(H*.31+61);
       ctx.textAlign="left";
     }
 
